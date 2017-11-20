@@ -1,0 +1,63 @@
+#!/usr/bin/env python3
+
+import os
+import logging.config
+logging.config.fileConfig(os.path.join(os.path.dirname(__file__), "logging.conf"))
+
+import screensaver
+import time
+import idle
+import logging
+import sys
+from gi.repository import GLib
+from locker import Locker
+from screensaver import ScreensaverFacade
+
+logger = logging.getLogger(__name__)
+
+def main(locker, idle_time_ms=19000):
+  logger.info("starting up")
+
+  locker = Locker(locker)
+
+  def recheck():
+    idle_now = idle.idle_time()
+    logger.debug("rechecking, idle time: %d" % idle_now)
+    if idle_now >= idle_time_ms:
+      logger.debug("issuing reset")
+      locker.reset()
+
+    return True
+
+  timer = -1
+  def inhibition_changed(value):
+    nonlocal timer
+
+    logger.info("inhibition changed: %r" % value)
+
+    if value:
+      timer = GLib.timeout_add(idle_time_ms + 500, recheck)
+      logger.debug("timer scheduled")
+    elif timer != -1:
+      t, timer = timer, -1
+      GLib.source_remove(t)
+      logger.debug("timer cancelled")
+
+    locker.reset()
+
+  screensaver = ScreensaverFacade(on_lock=lambda: None, inhibition_changed=inhibition_changed)
+
+  loop = GLib.MainLoop()
+  loop.run()
+
+if __name__ == "__main__":
+  kwargs = {}
+  if not sys.argv[1:]:
+    locker = ["/usr/bin/xdg-screensaver", "reset"]
+  else:
+    locker = sys.argv[1:]
+
+  try:
+    main(locker, **kwargs)
+  except KeyboardInterrupt:
+    pass
