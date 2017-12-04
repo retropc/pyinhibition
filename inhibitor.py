@@ -7,6 +7,7 @@ class Inhibitor(object):
     self._cookie = 0
 
     self._was_inhibited = False
+    self._update_inhibited(False)
 
   def _update_inhibited(self, now):
     if now == self._was_inhibited:
@@ -26,7 +27,7 @@ class Inhibitor(object):
       self._cookie = 1
     cookie = self._cookie
 
-    self._inhibitions[cookie] = (sender, path)
+    self._inhibitions[cookie] = (sender, path, app)
     self._senders.setdefault(sender, set()).add(cookie)
 
     self._update_inhibited(True)
@@ -35,7 +36,11 @@ class Inhibitor(object):
 
   def uninhibit(self, sender, path, cookie):
     v = self._inhibitions.get(cookie)
-    if v != (sender, path):
+    if v is None:
+      return
+
+    sender_v, path_v, _ = v
+    if (sender_v, path_v) != (sender, path):
       return
     del self._inhibitions[cookie]
 
@@ -44,8 +49,7 @@ class Inhibitor(object):
     if not sender_cookies:
       del self._senders[sender]
 
-    if not self._senders:
-      self._update_inhibited(False)
+    self._update_inhibited(bool(self._senders))
 
   def sender_terminated(self, sender):
     v = self._senders.get(sender)
